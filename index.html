@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cable TV Payment Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 20px;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        .container {
+            width: 80%;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        input, button, select {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .pending {
+            background-color: #ffcccc !important; /* Light Red */
+        }
+        .paid {
+            background-color: #ccffcc !important; /* Light Green */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cable TV Customer Payment Tracker</h1>
+        <h3>Enter Payment Details</h3>
+        <label>Customer Name:</label> <input type="text" id="customerName" required>
+        <label>Box Number:</label> <input type="text" id="boxNumber" required>
+        <label>Mobile Number:</label> <input type="text" id="mobileNumber" required>
+        <label>Address:</label>
+        <select id="address" required>
+            <option value="Raghunathpur">Raghunathpur</option>
+            <option value="Raghunathpur Mandir Para">Raghunathpur Mandir Para</option>
+            <option value="Hospital">Hospital</option>
+            <option value="P Pally">P Pally</option>
+        </select>
+        <label>Payment Amount:</label> <input type="number" id="paymentAmount" required>
+        <label>Payment Date:</label> <input type="date" id="paymentDate" required>
+        <button onclick="addPayment()">Add Payment</button>
+        <button onclick="clearInputs()">Clear</button>
+
+        <h3>Filter by Month</h3>
+        <input type="month" id="monthFilter" onchange="filterByMonth()">
+        <button onclick="exportMonthlyReport()">Download Monthly Report</button>
+
+        <h3>Payment Records</h3>
+        <table id="paymentTable">
+            <thead>
+                <tr>
+                    <th>Serial No</th>
+                    <th>Name</th>
+                    <th>Box No</th>
+                    <th>Mobile</th>
+                    <th>Address</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <h3>Summary</h3>
+        <p>Total Pending Amount: <span id="pendingTotal">0</span></p>
+        <p>Total Paid Amount: <span id="paidTotal">0</span></p>
+        <p>Monthly Profit (Paid - Pending): <span id="monthlyProfit">0</span></p>
+    </div>
+
+    <script>
+        let payments = JSON.parse(localStorage.getItem("payments")) || [];
+
+        function addPayment() {
+            const name = document.getElementById("customerName").value;
+            const boxNumber = document.getElementById("boxNumber").value;
+            const mobile = document.getElementById("mobileNumber").value;
+            const address = document.getElementById("address").value;
+            const amount = parseFloat(document.getElementById("paymentAmount").value);
+            const date = document.getElementById("paymentDate").value;
+            
+            if (payments.some(p => p.boxNumber === boxNumber)) {
+                alert("Box number already exists!");
+                return;
+            }
+
+            if (name && boxNumber && mobile && address && amount && date) {
+                payments.push({ name, boxNumber, mobile, address, amount, date, status: "Pending" });
+                localStorage.setItem("payments", JSON.stringify(payments));
+                renderTable();
+                clearInputs();
+            } else {
+                alert("Please fill out all fields!");
+            }
+        }
+
+        function renderTable(filterMonth = "") {
+            const tableBody = document.querySelector("#paymentTable tbody");
+            tableBody.innerHTML = "";
+            let pending = 0, paid = 0;
+            
+            payments.forEach((p, index) => {
+                if (filterMonth && !p.date.startsWith(filterMonth)) return;
+
+                if (p.status === "Pending") pending += p.amount;
+                if (p.status === "Paid") paid += p.amount;
+
+                tableBody.innerHTML += `
+                    <tr class="${p.status === 'Paid' ? 'paid' : 'pending'}">
+                        <td>${index + 1}</td>
+                        <td>${p.name}</td>
+                        <td>${p.boxNumber}</td>
+                        <td>${p.mobile}</td>
+                        <td>${p.address}</td>
+                        <td>${p.amount}</td>
+                        <td>${p.date}</td>
+                        <td onclick="toggleStatus(${index})">${p.status}</td>
+                        <td>
+                            <button onclick="editPayment(${index})">Edit</button>
+                            <button onclick="deletePayment(${index})">Delete</button>
+                        </td>
+                    </tr>`;
+            });
+
+            document.getElementById("pendingTotal").textContent = pending;
+            document.getElementById("paidTotal").textContent = paid;
+            document.getElementById("monthlyProfit").textContent = paid - pending;
+        }
+
+        function filterByMonth() {
+            renderTable(document.getElementById("monthFilter").value);
+        }
+
+        function exportMonthlyReport() {
+            let month = document.getElementById("monthFilter").value;
+            let filteredData = payments.filter(p => p.date.startsWith(month));
+
+            if (filteredData.length === 0) {
+                alert("No records found for selected month!");
+                return;
+            }
+
+            let sheet = XLSX.utils.json_to_sheet(filteredData);
+            let workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, sheet, "Monthly Report");
+
+            XLSX.writeFile(workbook, `Monthly_Report_${month}.xlsx`);
+        }
+
+        function toggleStatus(index) {
+            payments[index].status = payments[index].status === "Pending" ? "Paid" : "Pending";
+            localStorage.setItem("payments", JSON.stringify(payments));
+            renderTable();
+        }
+
+        function editPayment(index) {
+            let p = payments[index];
+            document.getElementById("customerName").value = p.name;
+            document.getElementById("boxNumber").value = p.boxNumber;
+            document.getElementById("mobileNumber").value = p.mobile;
+            document.getElementById("address").value = p.address;
+            document.getElementById("paymentAmount").value = p.amount;
+            document.getElementById("paymentDate").value = p.date;
+            deletePayment(index);
+        }
+
+        function deletePayment(index) {
+            payments.splice(index, 1);
+            localStorage.setItem("payments", JSON.stringify(payments));
+            renderTable();
+        }
+
+        function clearInputs() {
+            document.querySelectorAll("input").forEach(input => input.value = "");
+        }
+
+        renderTable();
+    </script>
+</body>
+</html>
